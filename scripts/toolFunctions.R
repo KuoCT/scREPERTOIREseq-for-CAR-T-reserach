@@ -49,7 +49,7 @@ presetAdd <- function(...) {
 }
 
 
-ggPreset <- function(style = "default") {
+ggPreset <- function(style = "default", legend_nrow = 2) {
   default <- list(
     ggprism::theme_prism(base_size = 10),
     theme(
@@ -65,17 +65,7 @@ ggPreset <- function(style = "default") {
   DimPlot <- list(
     guides(
       color = guide_legend(
-        nrow = 2,
-        byrow = TRUE,
-        override.aes = list(size = 2.8)
-      )
-    )
-  )
-  
-  DimPlot2 <- list(
-    guides(
-      color = guide_legend(
-        nrow = 5,
+        nrow = legend_nrow,
         byrow = TRUE,
         override.aes = list(size = 2.8)
       )
@@ -91,7 +81,6 @@ ggPreset <- function(style = "default") {
   presets <- list(
     default = default,
     DimPlot = presetAdd(default, DimPlot),
-    DimPlot2 = presetAdd(default, DimPlot2),
     NoLegend = presetAdd(default, NoLegend)
   )
   

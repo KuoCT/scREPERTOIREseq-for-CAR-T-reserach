@@ -1,0 +1,4 @@
+cellranger*
+out/
+seuratObjects/
+trainingData/

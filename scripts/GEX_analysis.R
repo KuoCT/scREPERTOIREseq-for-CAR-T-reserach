@@ -30,22 +30,20 @@ exp_date <- strsplit(exp_name, "_")[[1]][2]
 seu_obj_out <- file.path(getwd(), "seuratObjects")
 GEX_out <- file.path(getwd(), "out", exp_name, "GEX")
 GSEA_out <- file.path(getwd(), "out", exp_name, "GSEA")
-ORA_out <- file.path(getwd(), "out", exp_name, "ORA")
 
 dir.create(seu_obj_out, showWarnings = F, recursive = T)
 dir.create(GEX_out, showWarnings = F, recursive = T)
 dir.create(GSEA_out, showWarnings = F, recursive = T)
-dir.create(ORA_out, showWarnings = F, recursive = T)
 
 # Seed
 set.seed(1234)
 
 # Load functions
-source("scripts/04_seuratFunctions.R")
-source("scripts/04_toolFunctions.R")
+source("scripts/seuratFunctions.R")
+source("scripts/toolFunctions.R")
 
 # Import data ----
-h5 <- Read10X_h5("cellrangerData/20260630_scRNAseq/GEX_PDL1MoCARJNG_23H3TJLT4/outs/filtered_feature_bc_matrix.h5")
+h5 <- Read10X_h5("cellrangerData/GEX_PDL1MoCARJNG/outs/filtered_feature_bc_matrix.h5")
 print(h5[1:10, 1:5])
 
 # Create Seurat Object ----
@@ -113,73 +111,33 @@ p <- wrap_plots(PlotSet(), ncol = 3)
 savePNG(p, file.path(GEX_out, "FeaturePlots_Compile.png"),width = 8, height = 8, skip = T)
 # closePlotSet()
 
-# Module score (gene set 1-6) ----
-geneset_JURKAT <- read.csv("other/JURKAT_high_geneset.csv") %>% pull(Symbol)
-seu_sub <- AddModuleScore2(seu_sub, geneset_JURKAT, ScoreName = "Jurkat")
-
-geneset_list <- readRDS("other/20260622_geneset_list.rds")
-seu_sub <- AddModuleScore2(seu_sub, geneset_list[["Set 1"]], ScoreName = "Gene set 1")
-seu_sub <- AddModuleScore2(seu_sub, geneset_list[["Set 2"]], ScoreName = "Gene set 2")
-seu_sub <- AddModuleScore2(seu_sub, geneset_list[["Set 3"]], ScoreName = "Gene set 3")
-seu_sub <- AddModuleScore2(seu_sub, geneset_list[["Set 4"]], ScoreName = "Gene set 4")
-seu_sub <- AddModuleScore2(seu_sub, geneset_list[["Set 5"]], ScoreName = "Gene set 5")
-seu_sub <- AddModuleScore2(seu_sub, geneset_list[["Set 6"]], ScoreName = "Gene set 6")
-seu_sub <- AddModuleScore2(seu_sub, geneset_list[["Set 11"]], ScoreName = "Gene set 11")
-seu_sub <- AddModuleScore2(seu_sub, geneset_list[["Set 12"]], ScoreName = "Gene set 12")
-seu_sub <- AddModuleScore2(seu_sub, geneset_list[["Set 13"]], ScoreName = "Gene set 13")
-seu_sub <- AddModuleScore2(seu_sub, geneset_list[["Set 14"]], ScoreName = "Gene set 14")
-seu_sub <- AddModuleScore2(seu_sub, geneset_list[["Set 15"]], ScoreName = "Gene set 15")
-seu_sub <- AddModuleScore2(seu_sub, geneset_list[["Set 16"]], ScoreName = "Gene set 16")
-
-geneset_ctl <- c("CD8A", "CD8B", "GZMA", "GZMB", "PRF1")
-seu_sub <- AddModuleScore2(seu_sub, geneset_ctl, ScoreName = "Gene set CTL")
+# Module score ----
+geneset_JAKSTAT <- read.csv("other/JAK_STAT_genes.csv") %>% pull(1)
+seu_sub <- AddModuleScore2(seu_sub, geneset_JAKSTAT, ScoreName = "Gene set JAKSTAT")
 
 newPlotSet(TRUE)
-p <- FeaturePlot2(seu_sub, features = "Jurkat") %>% improveUMAP()
-p  %>% addPlot("Jurkat")
-saveSVG(p, file.path(GEX_out, "ModuleScore_Jurkat.svg"), width = 4.5, height = 5.05, skip = T)
+p <- improveUMAP(DimPlot(seu_sub, pt.size = 1, group.by = "clusters_v1", shuffle = T) + labs(title = "UMAP: Clusters") + ggPreset("DimPlot"))
+p %>% addPlot("UMAP")
 
-p <- FeaturePlot2(seu_sub, features = "Gene set 11") %>% improveUMAP()
-p %>% addPlot("Gene set 11")
-saveSVG(p, file.path(GEX_out, "ModuleScore_Gene_set_11.svg"), width = 4.5, height = 5.05, skip = T)
-
-p <- FeaturePlot2(seu_sub, features = "Gene set 12") %>% improveUMAP()
-p %>% addPlot("Gene set 12")
-saveSVG(p, file.path(GEX_out, "ModuleScore_Gene_set_12.svg"), width = 4.5, height = 5.05, skip = T)
-
-p <- FeaturePlot2(seu_sub, features = "Gene set 13") %>% improveUMAP()
-p %>% addPlot("Gene set 13")
-saveSVG(p, file.path(GEX_out, "ModuleScore_Gene_set_13.svg"), width = 4.5, height = 5.05, skip = T)
-
-p <- FeaturePlot2(seu_sub, features = "Gene set 14") %>% improveUMAP()
-p %>% addPlot("Gene set 14")
-saveSVG(p, file.path(GEX_out, "ModuleScore_Gene_set_14.svg"), width = 4.5, height = 5.05, skip = T)
-
-p <- FeaturePlot2(seu_sub, features = "Gene set 15") %>% improveUMAP()
-p %>% addPlot("Gene set 15")
-saveSVG(p, file.path(GEX_out, "ModuleScore_Gene_set_15.svg"), width = 4.5, height = 5.05, skip = T)
-
-p <- FeaturePlot2(seu_sub, features = "Gene set 16") %>% improveUMAP()
-p %>% addPlot("Gene set 16")
-saveSVG(p, file.path(GEX_out, "ModuleScore_Gene_set_16.svg"), width = 4.5, height = 5.05, skip = T)
-
-p <- FeaturePlot2(seu_sub, features = "Gene set CTL") %>% improveUMAP()
-p %>% addPlot("Gene set CTL")
-saveSVG(p, file.path(GEX_out, "ModuleScore_Gene_set_CTL.svg"), width = 4.5, height = 5.05, skip = T)
+p <- FeaturePlot2(seu_sub, features = "Gene set JAKSTAT") %>% improveUMAP()
+p %>% addPlot("Gene set JAKSTAT")
+saveSVG(p, file.path(GEX_out, "ModuleScore_Gene_set_JAKSTAT.svg"), width = 4.5, height = 5.05, skip = T)
 
 p <- FeaturePlot2(seu_sub, features = "EGFP") %>% improveUMAP()
 p %>% addPlot("EGFP")
 
 listPlotSet()
 p <- wrap_plots(PlotSet(), ncol = 3)
-savePNG(p, file.path(GEX_out, "ModuleScore_Compile.png"),width = 8, height = 12, skip = T)
+savePNG(p, file.path(GEX_out, "ModuleScore_Compile.png"),width = 8, height = 4.2, skip = F)
 # closePlotSet()
 
-# DEG/GSEA ----
+# Save RDS ----
+saveRDS2(seu_sub, file.path(seu_obj_out, "seu_sub.rds"), overwrite = T)
+
+# GSEA ----
 DEG_all_clusters <- FindAllMarkers(seu_sub, logfc.threshold = 0) %>% select(gene, everything())
 write.csv(DEG_all_clusters, file.path(GEX_out, "DEG_all_clusters.csv"), row.names = F)
 
-# GSEA
 for (i in unique(DEG_all_clusters$cluster)) {
   project_name <- paste0("Project_", i)
   project_dir <- file.path(GSEA_out, project_name)
@@ -194,9 +152,7 @@ for (i in unique(DEG_all_clusters$cluster)) {
       enrichMethod = "GSEA",
       organism = "hsapiens",
       enrichDatabase = "pathway_KEGG",
-      interestGene = DEG_all_clusters %>% 
-        filter(cluster == i) %>% 
-        select(gene, avg_log2FC),
+      interestGene = DEG_all_clusters %>% filter(cluster == i) %>% select(gene, avg_log2FC),
       interestGeneType = "genesymbol",
       referenceSet = "genome_protein-coding",
       minNum = 5,
@@ -206,7 +162,7 @@ for (i in unique(DEG_all_clusters$cluster)) {
       useWeightedSetCover = TRUE,
       usekMedoid = FALSE,
       fdrThr = 0.05,
-      topThr = 40,
+      topThr = 25,
       setCoverNum = 10,
       kMedoid_k = 10,
       reportNum = 40,
@@ -217,31 +173,11 @@ for (i in unique(DEG_all_clusters$cluster)) {
   }
   
   # GSEA color bar
-  if (!dir.exists(gsea_dir)) {
-    message("Skip color bar ", i, ": GSEA SVG folder not found.")
-    next
-  }
-  
-  if (!file.exists(score_path)) {
-    message("Skip color bar ", i, ": score table not found.")
-    next
-  }
-  
-  svg_files <- list.files(
-    path = gsea_dir,
-    pattern = "\\.svg$",
-    full.names = TRUE,
-    recursive = FALSE
-  )
-  
+  svg_files <- list.files(path = gsea_dir, pattern = "\\.svg$", full.names = T, recursive = F)
   svg_files <- svg_files[!grepl("_color\\.svg$", basename(svg_files))]
+  color_files <- file.path(gsea_dir, paste0(tools::file_path_sans_ext(basename(svg_files)), "_color.svg"))
   
-  color_files <- file.path(
-    gsea_dir,
-    paste0(tools::file_path_sans_ext(basename(svg_files)), "_color.svg")
-  )
-  svg_files <- svg_files[!file.exists(color_files)]
-  
+  if (TRUE) svg_files <- svg_files[!file.exists(color_files)] # Set "FALSE" to redraw color bar
   if (length(svg_files) == 0) {
     message("Skip color bar ", i, ": all SVG files already processed.")
     next
@@ -251,7 +187,10 @@ for (i in unique(DEG_all_clusters$cluster)) {
     improveGSEAplot(
       svg_path = svg,
       score_path = score_path,
-      output_folder = gsea_dir
+      output_folder = gsea_dir,
+      hit_height_scale = 0.5,
+      border_color = "black",
+      border_width = 1.5
     )
   }
 }
@@ -293,5 +232,4 @@ if (anyNA(pseudoBulk_filtered_Z)) pseudoBulk_filtered_Z[is.na(pseudoBulk_filtere
 write.csv(pseudoBulk_filtered, file.path(GEX_out, "pseudoBulk_filtered.csv"))
 write.csv(pseudoBulk_filtered_Z,file.path(GEX_out, "pseudoBulk_filtered_Z.csv"))
 
-# Save RDS ----
-saveRDS2(seu_sub, file.path(seu_obj_out, "20260707_seu_sub.rds"), overwrite = T)
+capture.output(sessionInfo(), file = "sessionInfo_RNA.txt")

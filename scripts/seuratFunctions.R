@@ -361,39 +361,158 @@ AppendSeuratMetadata <- function(
 
 # Color GSEA Enrichment Score Plot ----
 improveGSEAplot <- function(
-    svg_path, 
-    score_path, 
+    svg_path,
+    score_path,
     output_folder,
-    y_pos = 300, 
-    height = 25,
-    x_start = 100.75,
-    x_end = 465.03,
-    palette = c("navy", "white", "firebrick3")
+    y_pos = NULL,
+    height = NULL,
+    x_start = NULL,
+    x_end = NULL,
+    palette = c("navy", "white", "firebrick3"),
+    hit_height_scale = 0.7,
+    border_color = "black",
+    border_width = 0.75
 ) {
   # Read SVG source code
   svg_lines <- readLines(svg_path, warn = FALSE)
   
+  # Auto-detect ranked list metric range from SVG
+  if (is.null(x_start) || is.null(x_end)) {
+    polygon_text <- grep("<polygon\\s+points=", svg_lines, value = TRUE)
+    
+    polygon_values <- lapply(polygon_text, function(x) {
+      points_text <- sub(".*<polygon[^>]*points=['\"]([^'\"]+)['\"].*", "\\1", x)
+      points <- strsplit(trimws(points_text), "\\s+")[[1]]
+      xy <- do.call(rbind, strsplit(points, ","))
+      
+      data.frame(
+        x = suppressWarnings(as.numeric(xy[, 1])),
+        y = suppressWarnings(as.numeric(xy[, 2]))
+      )
+    })
+    
+    polygon_values <- polygon_values[vapply(polygon_values, function(x) {
+      sum(!is.na(x$x) & !is.na(x$y)) > 20 && diff(range(x$x, na.rm = TRUE)) > 100
+    }, logical(1))]
+    
+    if (length(polygon_values) == 0) stop("Cannot auto-detect ranked list metric polygon from SVG: ", svg_path)
+    
+    point_counts <- vapply(polygon_values, nrow, integer(1))
+    rank_polygon <- polygon_values[[which.max(point_counts)]]
+    
+    if (is.null(x_start)) x_start <- min(rank_polygon$x, na.rm = TRUE)
+    if (is.null(x_end)) x_end <- max(rank_polygon$x, na.rm = TRUE)
+  }
+  
+  # Detect hitting gene vertical lines
+  line_idx <- grep("<line\\s+", svg_lines)
+  line_text <- svg_lines[line_idx]
+  
+  if (length(line_idx) > 0) {
+    line_values <- lapply(line_text, function(x) {
+      vals <- sub(".*x1=['\"]([0-9.]+)['\"].*y1=['\"]([0-9.]+)['\"].*x2=['\"]([0-9.]+)['\"].*y2=['\"]([0-9.]+)['\"].*", "\\1 \\2 \\3 \\4", x)
+      as.numeric(strsplit(vals, "\\s+")[[1]])
+    })
+    
+    line_values <- do.call(rbind, line_values)
+    colnames(line_values) <- c("x1", "y1", "x2", "y2")
+    
+    line_df <- data.frame(
+      line_id = line_idx,
+      line_text = line_text,
+      x1 = line_values[, "x1"],
+      y1 = line_values[, "y1"],
+      x2 = line_values[, "x2"],
+      y2 = line_values[, "y2"],
+      stringsAsFactors = FALSE
+    )
+    
+    # Pick the repeated solid vertical lines used for hitting genes
+    hit_candidates <- line_df[
+      abs(line_df$x1 - line_df$x2) < 1e-6 &
+        abs(line_df$y1 - line_df$y2) > 20 &
+        line_df$y1 > 200 & line_df$y2 > 200 &
+        grepl("stroke-width:\\s*1\\.50", line_df$line_text) &
+        !grepl("stroke-dasharray", line_df$line_text),
+      ,
+      drop = FALSE
+    ]
+    
+    if (nrow(hit_candidates) > 0) {
+      pair_key <- paste(
+        round(pmax(hit_candidates$y1, hit_candidates$y2), 2),
+        round(pmin(hit_candidates$y1, hit_candidates$y2), 2),
+        sep = "_"
+      )
+      
+      hit_key <- names(sort(table(pair_key), decreasing = TRUE))[1]
+      hit_lines <- hit_candidates[pair_key == hit_key, , drop = FALSE]
+      
+      hit_bottom_old <- unique(round(pmax(hit_lines$y1, hit_lines$y2), 4))
+      hit_top_old <- unique(round(pmin(hit_lines$y1, hit_lines$y2), 4))
+      
+      hit_bottom_old <- hit_bottom_old[1]
+      hit_top_old <- hit_top_old[1]
+      
+      hit_center <- (hit_top_old + hit_bottom_old) / 2
+      hit_height_old <- hit_bottom_old - hit_top_old
+      hit_height_new <- hit_height_old * hit_height_scale
+      hit_top_new <- hit_center - hit_height_new / 2
+      hit_bottom_new <- hit_center + hit_height_new / 2
+      
+      # Update hitting gene line height
+      for (k in seq_len(nrow(hit_lines))) {
+        idx <- hit_lines$line_id[k]
+        old_y1 <- hit_lines$y1[k]
+        old_y2 <- hit_lines$y2[k]
+        
+        new_y1 <- if (old_y1 > old_y2) hit_bottom_new else hit_top_new
+        new_y2 <- if (old_y1 > old_y2) hit_top_new else hit_bottom_new
+        
+        svg_lines[idx] <- sub(
+          "(y1=['\"])[0-9.]+(['\"])",
+          paste0("\\1", format(round(new_y1, 2), nsmall = 2), "\\2"),
+          svg_lines[idx]
+        )
+        svg_lines[idx] <- sub(
+          "(y2=['\"])[0-9.]+(['\"])",
+          paste0("\\1", format(round(new_y2, 2), nsmall = 2), "\\2"),
+          svg_lines[idx]
+        )
+      }
+      
+      # Make color bar match hitting gene line range unless manually set
+      if (is.null(y_pos)) y_pos <- hit_top_new
+      if (is.null(height)) height <- hit_height_new
+    }
+  }
+  
+  # Fallback values if hitting gene lines cannot be detected
+  if (is.null(y_pos)) y_pos <- 300
+  if (is.null(height)) height <- 25
+  
   # Read score table
   df <- read.csv(score_path, row.names = NULL, sep = "\t")
+  if (!"score" %in% colnames(df)) stop("Score table does not contain column: score")
   
   # Order score
   df <- df[order(-df$score), ]
   scores <- df$score
   n <- length(scores)
-  # print(n)
+  if (n == 0) stop("No score values found in: ", score_path)
   
   # Color mapping
   lower_q <- quantile(scores, 0.10, na.rm = TRUE)
   upper_q <- quantile(scores, 0.90, na.rm = TRUE)
   mid <- 0
-  scores_clipped <- squish(scores, range = c(lower_q, upper_q)) # Clipping
+  scores_clipped <- scales::squish(scores, range = c(lower_q, upper_q))
   
   neg_fn <- scales::col_numeric(palette = palette[1:2], domain = c(lower_q, mid))
   pos_fn <- scales::col_numeric(palette = palette[2:3], domain = c(mid, upper_q))
   
   mapped_colors <- vapply(scores_clipped, function(s) {
     if (s == mid) {
-      palette[2]  # white
+      palette[2]
     } else if (s < mid) {
       neg_fn(s)
     } else {
@@ -404,28 +523,42 @@ improveGSEAplot <- function(
   # Coordinate mapping
   rect_width <- (x_end - x_start) / n
   x_coords <- x_start + seq(0, n - 1) * rect_width
+  total_width <- x_end - x_start
   
-  # Build rect elements
+  # Build color bar
   heatmap_rects <- paste0(
-    "<rect x='", round(x_coords, 2), "' y='", y_pos, "' width='", round(rect_width, 2),
-    "' height='", height, "' fill='", mapped_colors, "' stroke='none' />"
+    "<rect x='", round(x_coords, 4),
+    "' y='", round(y_pos, 2),
+    "' width='", round(rect_width, 4),
+    "' height='", round(height, 2),
+    "' fill='", mapped_colors,
+    "' stroke='none' />"
   )
-  heatmap_svg <- c("<g id='heatmap-bar'>", heatmap_rects, "</g>")
   
-  # Encode into SVG
-  # insert_at <- grep("</svg>", svg_lines)[1] - 1  # Insert before the end
-  insert_at <- grep("<svg[^>]*>", svg_lines)[1]  # Insert at top
+  # Add outer border
+  heatmap_border <- paste0(
+    "<rect x='", round(x_start, 4),
+    "' y='", round(y_pos, 2),
+    "' width='", round(total_width, 4),
+    "' height='", round(height, 2),
+    "' fill='none' stroke='", border_color,
+    "' stroke-width='", border_width, "' />"
+  )
+  
+  heatmap_svg <- c("<g id='heatmap-bar'>", heatmap_rects, heatmap_border, "</g>")
+  
+  # Insert heatmap bar near top so existing black lines stay visible above it
+  insert_at <- grep("<svg[^>]*>", svg_lines)[1]
   new_svg <- append(svg_lines, heatmap_svg, after = insert_at)
   
-  # Ensure output folder exists
-  if (!dir.exists(output_folder)) dir.create(output_folder, recursive = T)
-  
-  # Extract file name
-  file_name <- basename(svg_path)
-  file_base <- sub("\\.svg$", "", file_name)
-  output_file <- file.path(output_folder, paste0(file_base, "_color.svg"))
+  # Create output folder
+  if (!dir.exists(output_folder)) dir.create(output_folder, recursive = TRUE)
   
   # Write SVG
+  file_base <- sub("\\.svg$", "", basename(svg_path))
+  output_file <- file.path(output_folder, paste0(file_base, "_color.svg"))
   writeLines(new_svg, output_file)
+  
   message("Heatmap bar added and saved to: ", output_file)
+  invisible(output_file)
 }
